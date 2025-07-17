@@ -1,11 +1,11 @@
-name: VPS Temporária com SSH via Serveo (6 horas)
+name: VPS SSH via Serveo (6 horas)
 
 on: [push]
 
 jobs:
   vps:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 horas de timeout
+    timeout-minutes: 360  # 6 horas máximo
 
     steps:
       - name: Configurar ambiente
@@ -19,52 +19,41 @@ jobs:
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/id_rsa
 
-      - name: Mostrar credenciais de acesso
+      - name: Mostrar credenciais
         run: |
-          echo "===================== INSTRUÇÕES DE ACESSO ====================="
-          echo "----- CHAVE PRIVADA SSH (COLE NO TERMIUS/PUTTY) -----"
+          echo "===================== DADOS DE ACESSO ====================="
+          echo "----- CHAVE PRIVADA SSH -----"
           cat ~/.ssh/id_rsa
-          echo "----- FIM DA CHAVE PRIVADA -----"
-          echo ""
+          echo "----- FIM DA CHAVE -----"
           echo "Aguardando conexão Serveo..."
 
-      - name: Instalar e configurar SSH
+      - name: Configurar SSH
         run: |
           sudo apt-get update
-          sudo apt-get install -y openssh-server net-tools
-          sudo service ssh start
-          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo apt-get install -y openssh-server
+          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
           sudo service ssh restart
 
-      - name: Estabelecer túnel Serveo (com reconexão automática)
+      - name: Conectar ao Serveo (TCP)
         run: |
-          for i in {1..10}; do
-            echo "Tentativa $i de conexão com Serveo..."
-            ssh -o "ServerAliveInterval 60" -R 80:localhost:22 serveo.net 2>&1 | tee serveo.log &
-            sleep 15
+          for i in {1..5}; do
+            echo "▶ Tentativa $i/5 de conexão TCP..."
+            ssh -o ExitOnForwardFailure=yes -N -T -R 0:localhost:22 serveo.net > serveo.log 2>&1 &
+            sleep 10
             
-            if grep -q "Forwarding TCP" serveo.log; then
-              echo "=================================================="
-              echo "✅ CONEXÃO ESTABELECIDA COM SUCESSO!"
-              echo "🔗 URL: serveo.net:$(grep -oE 'Forwarding TCP.+:([0-9]+)' serveo.log | cut -d: -f2)"
+            if URL=$(grep -oE "Forwarding TCP.+:([0-9]+)" serveo.log); then
+              echo "=========================================="
+              echo "✅ CONEXÃO BEM-SUCEDIDA!"
+              echo "🌐 URL: serveo.net:$(echo $URL | cut -d: -f3)"
               echo "👤 Usuário: $(whoami)"
-              echo "⏳ A VPS ficará ativa por 6 horas"
-              echo "=================================================="
+              echo "⏳ Tempo restante: 6 horas"
+              echo "=========================================="
               break
             else
-              pkill ssh
+              pkill -f "ssh.*serveo" || true
               sleep 5
             fi
           done
 
-          # Manter a VPS ativa por 6 horas (21.600 segundos)
+          # Manter ativo
           sleep 21600
-          echo "Tempo de execução encerrado. VPS será desativada."
-
-      - name: Verificar status
-        run: |
-          echo "Verificando conexões ativas:"
-          netstat -tulnp
-          echo ""
-          echo "Processos SSH:"
-          ps aux | grep ssh
