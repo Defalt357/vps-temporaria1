@@ -1,0 +1,45 @@
+name: VPS Temporária com SSH e Speedtest
+
+on: [push]
+
+jobs:
+  vps:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Gerar chave SSH
+        run: |
+          ssh-keygen -t rsa -f ~/.ssh/id_rsa -q -N ""
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+
+      - name: Mostrar chave privada para Termius
+        run: |
+          echo "----- INÍCIO DA CHAVE PRIVADA -----"
+          cat ~/.ssh/id_rsa
+          echo "------ FIM DA CHAVE PRIVADA ------"
+
+      - name: Instalar e iniciar SSH
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo service ssh start
+
+      -  name: Conectar via Ngrok (alternativa ao Serveo)
+  run: |
+    curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+    sudo apt update && sudo apt install -y ngrok
+    ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
+    ngrok tcp 22 --log=stdout > ngrok.log &
+    sleep 10
+    grep "url=tcp://" ngrok.log
+  env:
+    NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
+      
+      - name: Instalar e executar Speedtest
+        run: |
+          sudo apt-get install -y speedtest-cli
+          speedtest-cli
+
+      - name: Manter VPS viva por 1 hora
+        run: sleep 3600
