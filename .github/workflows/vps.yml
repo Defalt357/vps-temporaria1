@@ -1,45 +1,70 @@
-name: VPS Temporária com SSH e Speedtest
+name: VPS Temporária com SSH via Serveo (6 horas)
 
 on: [push]
 
 jobs:
   vps:
     runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 horas de timeout
 
     steps:
-      - name: Gerar chave SSH
+      - name: Configurar ambiente
+        run: |
+          mkdir -p ~/.ssh
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Gerar chaves SSH
         run: |
           ssh-keygen -t rsa -f ~/.ssh/id_rsa -q -N ""
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/id_rsa
 
-      - name: Mostrar chave privada para Termius
+      - name: Mostrar credenciais de acesso
         run: |
-          echo "----- INÍCIO DA CHAVE PRIVADA -----"
+          echo "===================== INSTRUÇÕES DE ACESSO ====================="
+          echo "----- CHAVE PRIVADA SSH (COLE NO TERMIUS/PUTTY) -----"
           cat ~/.ssh/id_rsa
-          echo "------ FIM DA CHAVE PRIVADA ------"
+          echo "----- FIM DA CHAVE PRIVADA -----"
+          echo ""
+          echo "Aguardando conexão Serveo..."
 
-      - name: Instalar e iniciar SSH
+      - name: Instalar e configurar SSH
         run: |
           sudo apt-get update
-          sudo apt-get install -y openssh-server
+          sudo apt-get install -y openssh-server net-tools
           sudo service ssh start
+          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo service ssh restart
 
-      - name: Conectar via Ngrok (alternativa ao Serveo)
+      - name: Estabelecer túnel Serveo (com reconexão automática)
         run: |
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install -y ngrok
-          ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
-          ngrok tcp 22 --log=stdout > ngrok.log &
-          sleep 10
-          grep "url=tcp://" ngrok.log
-        env:
-          NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
+          for i in {1..10}; do
+            echo "Tentativa $i de conexão com Serveo..."
+            ssh -o "ServerAliveInterval 60" -R 80:localhost:22 serveo.net 2>&1 | tee serveo.log &
+            sleep 15
+            
+            if grep -q "Forwarding TCP" serveo.log; then
+              echo "=================================================="
+              echo "✅ CONEXÃO ESTABELECIDA COM SUCESSO!"
+              echo "🔗 URL: serveo.net:$(grep -oE 'Forwarding TCP.+:([0-9]+)' serveo.log | cut -d: -f2)"
+              echo "👤 Usuário: $(whoami)"
+              echo "⏳ A VPS ficará ativa por 6 horas"
+              echo "=================================================="
+              break
+            else
+              pkill ssh
+              sleep 5
+            fi
+          done
 
-      - name: Instalar e executar Speedtest
+          # Manter a VPS ativa por 6 horas (21.600 segundos)
+          sleep 21600
+          echo "Tempo de execução encerrado. VPS será desativada."
+
+      - name: Verificar status
         run: |
-          sudo apt-get install -y speedtest-cli
-          speedtest-cli
-
-      - name: Manter VPS viva por 1 hora
-        run: sleep 3600
+          echo "Verificando conexões ativas:"
+          netstat -tulnp
+          echo ""
+          echo "Processos SSH:"
+          ps aux | grep ssh
