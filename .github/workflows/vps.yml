@@ -24,18 +24,18 @@ jobs:
           sudo apt-get install -y openssh-server
           sudo service ssh start
 
-      -  name: Conectar via Ngrok (alternativa ao Serveo)
-  run: |
-    curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-    echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-    sudo apt update && sudo apt install -y ngrok
-    ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
-    ngrok tcp 22 --log=stdout > ngrok.log &
-    sleep 10
-    grep "url=tcp://" ngrok.log
-  env:
-    NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
-      
+      - name: Conectar via Ngrok (alternativa ao Serveo)
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+          ngrok config add-authtoken ${{ secrets.NGROK_TOKEN }}
+          ngrok tcp 22 --log=stdout > ngrok.log &
+          sleep 10
+          grep "url=tcp://" ngrok.log
+        env:
+          NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
+
       - name: Instalar e executar Speedtest
         run: |
           sudo apt-get install -y speedtest-cli
